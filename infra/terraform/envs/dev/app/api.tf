@@ -58,3 +58,4 @@ resource "aws_apigatewayv2_route" "kyc_submit" {
   route_key = "POST /kyc/submit"
   target    = "integrations/${aws_apigatewayv2_integration.echo.id}"
 }
+
