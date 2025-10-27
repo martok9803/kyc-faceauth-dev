@@ -1,4 +1,4 @@
-# Lambda role
+// Lambda role
 data "aws_iam_policy_document" "lambda_assume" {
   statement {
     actions = ["sts:AssumeRole"]
@@ -14,13 +14,13 @@ resource "aws_iam_role" "lambda_role" {
   assume_role_policy = data.aws_iam_policy_document.lambda_assume.json
 }
 
-# CloudWatch Logs for Lambda
+// CloudWatch Logs for Lambda
 resource "aws_iam_role_policy_attachment" "cwlogs" {
   role       = aws_iam_role.lambda_role.name
   policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
 }
 
-# S3 limited access for Lambda
+// S3 limited access for Lambda
 data "aws_iam_policy_document" "s3_access" {
   statement {
     actions   = ["s3:GetObject", "s3:PutObject"]
@@ -38,7 +38,7 @@ resource "aws_iam_role_policy_attachment" "s3_attach" {
   policy_arn = aws_iam_policy.s3_access.arn
 }
 
-# DynamoDB limited access for Lambda
+// DynamoDB limited access for Lambda
 data "aws_iam_policy_document" "ddb_access" {
   statement {
     actions   = ["dynamodb:PutItem", "dynamodb:GetItem"]
@@ -56,7 +56,7 @@ resource "aws_iam_role_policy_attachment" "ddb_attach" {
   policy_arn = aws_iam_policy.ddb_access.arn
 }
 
-# -------- Step Functions role (placeholder pipeline) --------
+// -------- Step Functions role (placeholder pipeline) --------
 data "aws_iam_policy_document" "sfn_assume" {
   statement {
     actions = ["sts:AssumeRole"]
@@ -72,7 +72,7 @@ resource "aws_iam_role" "sfn_role" {
   assume_role_policy = data.aws_iam_policy_document.sfn_assume.json
 }
 
-# Minimal inline policy (no actions needed for Pass state, but allow logging if added later)
+// Minimal inline policy (no actions needed for Pass state, but allow logging if added later)
 data "aws_iam_policy_document" "sfn_min" {
   statement {
     actions   = ["logs:CreateLogGroup", "logs:CreateLogStream", "logs:PutLogEvents"]
@@ -88,4 +88,36 @@ resource "aws_iam_policy" "sfn_min" {
 resource "aws_iam_role_policy_attachment" "sfn_min_attach" {
   role       = aws_iam_role.sfn_role.name
   policy_arn = aws_iam_policy.sfn_min.arn
+}
+
+// Step Functions: allow StartExecution
+data "aws_iam_policy_document" "sfn_start" {
+  statement {
+    actions   = ["states:StartExecution"]
+    resources = [aws_sfn_state_machine.pipeline.arn]
+  }
+}
+resource "aws_iam_policy" "sfn_start" {
+  name   = "${local.name_prefix}-sfn-start"
+  policy = data.aws_iam_policy_document.sfn_start.json
+}
+resource "aws_iam_role_policy_attachment" "sfn_start_attach" {
+  role       = aws_iam_role.lambda_role.name
+  policy_arn = aws_iam_policy.sfn_start.arn
+}
+
+// Rekognition (optional; cost only if enabled)
+data "aws_iam_policy_document" "rekognition_liveness" {
+  statement {
+    actions   = ["rekognition:CreateFaceLivenessSession","rekognition:GetFaceLivenessSessionResults"]
+    resources = ["*"]
+  }
+}
+resource "aws_iam_policy" "rekognition_liveness" {
+  name   = "${local.name_prefix}-rekognition-liveness"
+  policy = data.aws_iam_policy_document.rekognition_liveness.json
+}
+resource "aws_iam_role_policy_attachment" "rekognition_attach" {
+  role       = aws_iam_role.lambda_role.name
+  policy_arn = aws_iam_policy.rekognition_liveness.arn
 }

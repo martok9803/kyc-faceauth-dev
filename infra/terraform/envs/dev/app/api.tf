@@ -40,3 +40,21 @@ resource "aws_apigatewayv2_stage" "live" {
   name        = "$default"
   auto_deploy = true
 }
+
+resource "aws_apigatewayv2_route" "presign" {
+  api_id    = aws_apigatewayv2_api.http.id
+  route_key = "POST /presign-id"
+  target    = "integrations/${aws_apigatewayv2_integration.echo.id}"
+}
+
+resource "aws_apigatewayv2_route" "liveness_start" {
+  api_id    = aws_apigatewayv2_api.http.id
+  route_key = "POST /liveness/start"
+  target    = "integrations/${aws_apigatewayv2_integration.echo.id}"
+}
+
+resource "aws_apigatewayv2_route" "kyc_submit" {
+  api_id    = aws_apigatewayv2_api.http.id
+  route_key = "POST /kyc/submit"
+  target    = "integrations/${aws_apigatewayv2_integration.echo.id}"
+}
