@@ -1,4 +1,3 @@
-# (Optional in dev) KMS CMK for secrets later. Not used by code yet, but ready.
 resource "aws_kms_key" "app" {
   description             = "${local.name_prefix} app key"
   deletion_window_in_days = 7

@@ -1,4 +1,3 @@
-// Build image in CI and push to ECR; for now we point to :latest placeholder
 resource "aws_ecr_repository" "echo" {
   name                 = "${local.name_prefix}-echo"
   image_tag_mutability = "MUTABLE"

@@ -20,11 +20,9 @@ def handler(event, context):
     path = event.get("rawPath","/")
     method = event.get("requestContext",{}).get("http",{}).get("method","GET")
 
-    # health
     if path == "/ping" and method == "GET":
         return _resp(200, {"ok": True, "ts": int(time.time()), "bucket": BUCKET, "table": TABLE})
 
-    # echo test
     if path == "/echo" and method == "POST":
         try:
             body = json.loads(event.get("body") or "{}")
@@ -37,7 +35,6 @@ def handler(event, context):
         )
         return _resp(200, {"saved": pk, "echo": body})
 
-    # presign S3 upload for ID image
     if path == "/presign-id" and method == "POST":
         key = f"uploads/{uuid.uuid4().hex}.jpg"
         put_url = S3.generate_presigned_url(
@@ -52,15 +49,12 @@ def handler(event, context):
         )
         return _resp(200, {"bucket": BUCKET, "key": key, "putUrl": put_url, "getUrl": get_url})
 
-    # start liveness 
     if path == "/liveness/start" and method == "POST":
         if not REKOGNITION_ENABLED:
             return _resp(200, {"sessionId": f"mock-{uuid.uuid4().hex}", "mode": "mock"})
-        # real Rekognition (incurs cost only if enabled)
         resp = REKO.create_face_liveness_session()
         return _resp(200, {"sessionId": resp["SessionId"], "mode": "rekognition"})
 
-    # submit KYC
     if path == "/kyc/submit" and method == "POST":
         body = json.loads(event.get("body") or "{}")
         if not STATE_MACHINE_ARN:

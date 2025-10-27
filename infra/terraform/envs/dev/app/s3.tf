@@ -20,7 +20,6 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "uploads" {
   }
 }
 
-# Minimal CORS for presigned PUT/GET
 resource "aws_s3_bucket_cors_configuration" "uploads" {
   bucket = aws_s3_bucket.uploads.id
   cors_rule {
@@ -32,7 +31,6 @@ resource "aws_s3_bucket_cors_configuration" "uploads" {
   }
 }
 
-# auto-delete after 7 days
 resource "aws_s3_bucket_lifecycle_configuration" "uploads" {
   bucket = aws_s3_bucket.uploads.id
   rule {

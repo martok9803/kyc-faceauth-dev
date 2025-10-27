@@ -1,4 +1,3 @@
-# Monthly budget with 80% and 100% email alerts
 resource "aws_budgets_budget" "monthly_cost_cap" {
   name         = var.budget_name
   budget_type  = "COST"

@@ -1,4 +1,3 @@
-// Lambda role
 data "aws_iam_policy_document" "lambda_assume" {
   statement {
     actions = ["sts:AssumeRole"]
@@ -14,13 +13,11 @@ resource "aws_iam_role" "lambda_role" {
   assume_role_policy = data.aws_iam_policy_document.lambda_assume.json
 }
 
-// CloudWatch Logs for Lambda
 resource "aws_iam_role_policy_attachment" "cwlogs" {
   role       = aws_iam_role.lambda_role.name
   policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
 }
 
-// S3 limited access for Lambda
 data "aws_iam_policy_document" "s3_access" {
   statement {
     actions   = ["s3:GetObject", "s3:PutObject"]
@@ -38,7 +35,6 @@ resource "aws_iam_role_policy_attachment" "s3_attach" {
   policy_arn = aws_iam_policy.s3_access.arn
 }
 
-// DynamoDB limited access for Lambda
 data "aws_iam_policy_document" "ddb_access" {
   statement {
     actions   = ["dynamodb:PutItem", "dynamodb:GetItem"]
@@ -56,7 +52,6 @@ resource "aws_iam_role_policy_attachment" "ddb_attach" {
   policy_arn = aws_iam_policy.ddb_access.arn
 }
 
-// -------- Step Functions role (placeholder pipeline) --------
 data "aws_iam_policy_document" "sfn_assume" {
   statement {
     actions = ["sts:AssumeRole"]
@@ -72,7 +67,6 @@ resource "aws_iam_role" "sfn_role" {
   assume_role_policy = data.aws_iam_policy_document.sfn_assume.json
 }
 
-// Minimal inline policy (no actions needed for Pass state, but allow logging if added later)
 data "aws_iam_policy_document" "sfn_min" {
   statement {
     actions   = ["logs:CreateLogGroup", "logs:CreateLogStream", "logs:PutLogEvents"]
@@ -90,7 +84,6 @@ resource "aws_iam_role_policy_attachment" "sfn_min_attach" {
   policy_arn = aws_iam_policy.sfn_min.arn
 }
 
-// Step Functions: allow StartExecution
 data "aws_iam_policy_document" "sfn_start" {
   statement {
     actions   = ["states:StartExecution"]
@@ -106,7 +99,6 @@ resource "aws_iam_role_policy_attachment" "sfn_start_attach" {
   policy_arn = aws_iam_policy.sfn_start.arn
 }
 
-// Rekognition (optional; cost only if enabled)
 data "aws_iam_policy_document" "rekognition_liveness" {
   statement {
     actions   = ["rekognition:CreateFaceLivenessSession","rekognition:GetFaceLivenessSessionResults"]

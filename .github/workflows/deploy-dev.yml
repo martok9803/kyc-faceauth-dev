@@ -24,7 +24,6 @@ jobs:
       - uses: hashicorp/setup-terraform@v3
         with: { terraform_version: 1.7.5 }
 
-      # 1) Create ECR repo first (targeted apply pls)
       - name: Terraform init (app)
         working-directory: infra/terraform/envs/dev/app
         run: |
@@ -38,7 +37,6 @@ jobs:
         working-directory: infra/terraform/envs/dev/app
         run: terraform apply -auto-approve -target=aws_ecr_repository.echo
 
-      # 2) Build & push image
       - name: Login to ECR
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
@@ -53,7 +51,6 @@ jobs:
           docker build -t "$IMAGE" .
           docker push "$IMAGE"
 
-      # 3) Deploy rest of infra with haste
       - name: Terraform apply (full app)
         working-directory: infra/terraform/envs/dev/app
         run: terraform apply -auto-approve
