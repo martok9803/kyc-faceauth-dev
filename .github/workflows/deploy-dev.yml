@@ -1,0 +1,57 @@
+name: deploy-dev
+on:
+  push:
+    branches: [ main ]
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    env:
+      AWS_REGION: eu-central-1
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::546453746406:role/kyc-dev-gha-deploy
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build & push Lambda image (echo)
+        working-directory: services/lambdas/echo
+        env:
+          ECR: ${{ steps.login-ecr.outputs.registry }}
+          REPO: kyc-dev-echo
+        run: |
+          IMAGE="${ECR}/${REPO}:latest"
+          docker build -t "$IMAGE" .
+          docker push "$IMAGE"
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.7.5
+
+      - name: Terraform init (app)
+        working-directory: infra/terraform/envs/dev/app
+        run: |
+          terraform init \
+            -backend-config="bucket=kyc-dev-tfstate" \
+            -backend-config="key=envs/dev/app/terraform.tfstate" \
+            -backend-config="region=${AWS_REGION}" \
+            -backend-config="dynamodb_table=kyc-dev-tf-locks"
+
+      - name: Terraform apply (app)
+        working-directory: infra/terraform/envs/dev/app
+        run: terraform apply -auto-approve
+
+      - name: Show outputs (API URL)
+        working-directory: infra/terraform/envs/dev/app
+        run: terraform output
