@@ -1,0 +1,5 @@
+aws_region                 = "eu-central-1"
+budget_limit_amount_eur    = 5
+alert_emails               = ["martinkirov9803@gmail.com"]
+anomaly_threshold_absolute = 1
+budget_name                = "dev-monthly-budget"

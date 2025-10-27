@@ -1,0 +1,26 @@
+# ---- Terraform ----
+**/.terraform/*
+**/*.tfstate
+**/*.tfstate.*
+**/*.tfvars
+!**/terraform.tfvars.example
+crash.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+.terraformrc
+terraform.rc
+
+
+# Python
+__pycache__/
+*.pyc
+
+# Node/Frontend (future)
+node_modules/
+dist/
+
+# OS/editor junk
+.DS_Store
+*.swp
