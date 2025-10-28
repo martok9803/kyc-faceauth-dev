@@ -1,4 +1,4 @@
-import json, os, boto3, uuid, base64, time
+import os, json, boto3, uuid, time
 
 s3 = boto3.client("s3")
 ddb = boto3.resource("dynamodb")
@@ -13,7 +13,12 @@ table = ddb.Table(TABLE)
 def respond(status, body):
     return {
         "statusCode": status,
-        "headers": {"Content-Type": "application/json"},
+        "headers": {
+            "Content-Type": "application/json",
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
+            "Access-Control-Allow-Headers": "Content-Type,Authorization"
+        },
         "body": json.dumps(body)
     }
 
@@ -22,7 +27,7 @@ def handler(event, context):
     method = event.get("requestContext", {}).get("http", {}).get("method", "")
 
     if route == "/ping":
-        return respond(200, {"status": "ok", "time": time.time()})
+        return respond(200, {"status": "ok", "time": int(time.time()), "bucket": BUCKET, "rekog": REKOG_ENABLED})
 
     if route == "/presign-id" and method == "POST":
         key = f"uploads/{uuid.uuid4()}.jpg"
@@ -46,23 +51,18 @@ def handler(event, context):
             "status": "started"
         })
         return respond(200, {"sessionId": session_id, "message": "liveness started"})
-    
+
     if route == "/liveness/results" and method == "POST":
         body = json.loads(event.get("body", "{}"))
         sid = body.get("sessionId")
         if not sid:
             return respond(400, {"error": "missing sessionId"})
-
-        result = {
-            "sessionId": sid,
-            "liveness": "PASS" if hash(sid) % 2 == 0 else "FAIL",
-            "confidence": 0.98
-        }
+        result = {"sessionId": sid, "liveness": "PASS" if hash(sid) % 2 == 0 else "FAIL", "confidence": 0.98}
         table.update_item(
             Key={"pk": f"liveness#{sid}"},
             UpdateExpression="SET #s=:s, result=:r",
             ExpressionAttributeNames={"#s": "status"},
-            ExpressionAttributeValues={":s": "done", ":r": result}
+            ExpressionAttributeValues={":s": "done", ":r": json.dumps(result)}
         )
         return respond(200, result)
 
@@ -70,27 +70,29 @@ def handler(event, context):
         body = json.loads(event.get("body", "{}"))
         session = body.get("sessionId")
         id_url = body.get("idUrl")
-
-        if not session or not id_url:
-            return respond(400, {"error": "missing sessionId or idUrl"})
-
-        match = None
+        selfie_url = body.get("selfieUrl")
+        if not session or not id_url or not selfie_url:
+            return respond(400, {"error": "missing sessionId, idUrl, or selfieUrl"})
+        match_result = {"similarity": 99.3, "mock": True}
         if REKOG_ENABLED:
-            
-            match = rek.compare_faces(
-                SourceImage={"S3Object": {"Bucket": BUCKET, "Name": id_url}},
-                TargetImage={"S3Object": {"Bucket": BUCKET, "Name": id_url}}
-            )
-
+            try:
+                match = rek.compare_faces(
+                    SourceImage={"S3Object": {"Bucket": BUCKET, "Name": id_url}},
+                    TargetImage={"S3Object": {"Bucket": BUCKET, "Name": selfie_url}},
+                    SimilarityThreshold=90
+                )
+                match_result = match
+            except Exception as e:
+                match_result = {"error": str(e)}
         kyc_id = str(uuid.uuid4())
         table.put_item(Item={
             "pk": f"kyc#{kyc_id}",
             "sessionId": session,
             "idUrl": id_url,
-            "match": bool(match),
+            "selfieUrl": selfie_url,
+            "match": json.dumps(match_result),
             "created": int(time.time())
         })
+        return respond(200, {"kycId": kyc_id, "match": match_result})
 
-        return respond(200, {"kycId": kyc_id, "match": bool(match)})
-
-    return respond(404, {"message": "Not Found"})
+    return respond(404, {"message": "Not Found", "path": route})
