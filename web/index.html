@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>FaceAuth · Mock Demo</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="api-base" content="https://b1srloxvwg.execute-api.eu-central-1.amazonaws.com">
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <h1>🔐 FaceAuth Mock Demo</h1>
+
+  <section>
+    <h2>Health</h2>
+    <button id="btn-ping">/ping</button>
+  </section>
+
+  <section>
+    <h2>Upload Photos</h2>
+    <div>
+      <label>ID Photo: </label>
+      <input type="file" id="file-id" accept="image/*" />
+      <button id="btn-upload-id">Upload ID</button>
+    </div>
+    <div>
+      <label>Selfie: </label>
+      <input type="file" id="file-selfie" accept="image/*" />
+      <button id="btn-upload-selfie">Upload Selfie</button>
+    </div>
+  </section>
+
+  <section>
+    <h2>Liveness (Mock)</h2>
+    <button id="btn-liveness-start">Start session</button>
+    <button id="btn-liveness-result">Get result</button>
+  </section>
+
+  <section>
+    <h2>KYC Submit</h2>
+    <input type="text" id="idKey" placeholder="ID photo key" />
+    <input type="text" id="selfieKey" placeholder="Selfie key" />
+    <button id="btn-kyc">Submit</button>
+  </section>
+
+  <pre id="out">Ready…</pre>
+  <script src="app.js"></script>
+</body>
+</html>
