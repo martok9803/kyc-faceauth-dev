@@ -1,11 +1,13 @@
-import os, json, boto3, uuid, time
+#!/usr/bin/env python3
+import json, os, time, uuid
+import boto3
+from botocore.exceptions import ClientError
 
 s3 = boto3.client("s3")
 ddb = boto3.resource("dynamodb")
-rek = boto3.client("rekognition")
 
 BUCKET = os.environ["BUCKET"]
-TABLE = os.environ["DDB_TABLE"]
+TABLE  = os.environ["DDB_TABLE"]
 REKOG_ENABLED = os.environ.get("REKOGNITION_ENABLED", "false").lower() == "true"
 
 table = ddb.Table(TABLE)
@@ -17,82 +19,101 @@ def respond(status, body):
             "Content-Type": "application/json",
             "Access-Control-Allow-Origin": "*",
             "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
-            "Access-Control-Allow-Headers": "Content-Type,Authorization"
+            "Access-Control-Allow-Headers": "Content-Type,Authorization",
         },
         "body": json.dumps(body)
     }
 
 def handler(event, context):
-    route = event.get("rawPath", "")
-    method = event.get("requestContext", {}).get("http", {}).get("method", "")
+    try:
+        route  = event.get("rawPath") or event.get("path") or ""
+        method = (event.get("requestContext", {}).get("http", {}).get("method") or event.get("httpMethod") or "").upper()
+        if method == "OPTIONS":
+            return respond(200, {"ok": True})
 
-    if route == "/ping":
-        return respond(200, {"status": "ok", "time": int(time.time()), "bucket": BUCKET, "rekog": REKOG_ENABLED})
+        # ---- Health
+        if route == "/ping" and method == "GET":
+            return respond(200, {"status": "ok", "time": int(time.time()), "bucket": BUCKET, "table": TABLE})
 
-    if route == "/presign-id" and method == "POST":
-        key = f"uploads/{uuid.uuid4()}.jpg"
-        put = s3.generate_presigned_url(
-            "put_object",
-            Params={"Bucket": BUCKET, "Key": key, "ContentType": "image/jpeg"},
-            ExpiresIn=300
-        )
-        get = s3.generate_presigned_url(
-            "get_object",
-            Params={"Bucket": BUCKET, "Key": key},
-            ExpiresIn=300
-        )
-        return respond(200, {"key": key, "putUrl": put, "getUrl": get})
+        # ---- Presign (upload an ID/selfie)
+        if route == "/presign-id" and method == "POST":
+            key = f"uploads/{uuid.uuid4()}.jpg"
+            put_url = s3.generate_presigned_url(
+                "put_object",
+                Params={"Bucket": BUCKET, "Key": key, "ContentType": "image/jpeg"},
+                ExpiresIn=300,
+            )
+            get_url = s3.generate_presigned_url(
+                "get_object",
+                Params={"Bucket": BUCKET, "Key": key},
+                ExpiresIn=300,
+            )
+            return respond(200, {"key": key, "putUrl": put_url, "getUrl": get_url})
 
-    if route == "/liveness/start" and method == "POST":
-        session_id = str(uuid.uuid4())
-        table.put_item(Item={
-            "pk": f"liveness#{session_id}",
-            "ts": int(time.time()),
-            "status": "started"
-        })
-        return respond(200, {"sessionId": session_id, "message": "liveness started"})
+        # ---- Start liveness (mock)
+        if route == "/liveness/start" and method == "POST":
+            session_id = str(uuid.uuid4())
+            table.put_item(Item={
+                "pk": f"liveness#{session_id}",
+                "ts": str(int(time.time())),     # store numbers as strings to avoid Decimal mismatches
+                "status": "started"
+            })
+            return respond(200, {"sessionId": session_id, "message": "liveness started (mock)"})
 
-    if route == "/liveness/results" and method == "POST":
-        body = json.loads(event.get("body", "{}"))
-        sid = body.get("sessionId")
-        if not sid:
-            return respond(400, {"error": "missing sessionId"})
-        result = {"sessionId": sid, "liveness": "PASS" if hash(sid) % 2 == 0 else "FAIL", "confidence": 0.98}
-        table.update_item(
-            Key={"pk": f"liveness#{sid}"},
-            UpdateExpression="SET #s=:s, result=:r",
-            ExpressionAttributeNames={"#s": "status"},
-            ExpressionAttributeValues={":s": "done", ":r": json.dumps(result)}
-        )
-        return respond(200, result)
-
-    if route == "/kyc/submit" and method == "POST":
-        body = json.loads(event.get("body", "{}"))
-        session = body.get("sessionId")
-        id_url = body.get("idUrl")
-        selfie_url = body.get("selfieUrl")
-        if not session or not id_url or not selfie_url:
-            return respond(400, {"error": "missing sessionId, idUrl, or selfieUrl"})
-        match_result = {"similarity": 99.3, "mock": True}
-        if REKOG_ENABLED:
+        # ---- Liveness results (mock)
+        if route == "/liveness/results" and method == "POST":
+            body_raw = event.get("body") or "{}"
             try:
-                match = rek.compare_faces(
-                    SourceImage={"S3Object": {"Bucket": BUCKET, "Name": id_url}},
-                    TargetImage={"S3Object": {"Bucket": BUCKET, "Name": selfie_url}},
-                    SimilarityThreshold=90
-                )
-                match_result = match
-            except Exception as e:
-                match_result = {"error": str(e)}
-        kyc_id = str(uuid.uuid4())
-        table.put_item(Item={
-            "pk": f"kyc#{kyc_id}",
-            "sessionId": session,
-            "idUrl": id_url,
-            "selfieUrl": selfie_url,
-            "match": json.dumps(match_result),
-            "created": int(time.time())
-        })
-        return respond(200, {"kycId": kyc_id, "match": match_result})
+                data = json.loads(body_raw)
+            except Exception:
+                data = {}
+            sid = data.get("sessionId")
+            if not sid:
+                return respond(400, {"error": "missing sessionId"})
+            # simple mock decision
+            passed = (hash(sid) % 2 == 0)
+            result = {"sessionId": sid, "liveness": "PASS" if passed else "FAIL", "confidence": "0.98"}
+            table.update_item(
+                Key={"pk": f"liveness#{sid}"},
+                UpdateExpression="SET #s = :s, result = :r",
+                ExpressionAttributeNames={"#s": "status"},
+                ExpressionAttributeValues={":s": "done", ":r": json.dumps(result)}
+            )
+            return respond(200, result)
 
-    return respond(404, {"message": "Not Found", "path": route})
+        # ---- KYC submit (mock compare)
+        if route == "/kyc/submit" and method == "POST":
+            body_raw = event.get("body") or "{}"
+            try:
+                data = json.loads(body_raw)
+            except Exception:
+                data = {}
+            session = data.get("sessionId")
+            id_url = data.get("idUrl")
+            selfie_url = data.get("selfieUrl")
+            if not session or not id_url or not selfie_url:
+                return respond(400, {"error": "missing sessionId, idUrl, or selfieUrl"})
+
+            # mock "match" result
+            match = (hash(id_url + selfie_url) % 3 != 0)
+
+            kyc_id = str(uuid.uuid4())
+            table.put_item(Item={
+                "pk": f"kyc#{kyc_id}",
+                "sessionId": session,
+                "idUrl": id_url,
+                "selfieUrl": selfie_url,
+                "match": str(bool(match)),
+                "created": str(int(time.time()))
+            })
+            return respond(200, {"kycId": kyc_id, "match": match})
+
+        # ---- Not found
+        return respond(404, {"error": "Not Found", "path": route, "method": method})
+    except ClientError as ce:
+        # surface AWS service errors in logs and return safe 500
+        print(f"[ClientError] {ce}")
+        return respond(500, {"error": "AWS client error", "detail": str(ce)})
+    except Exception as e:
+        print(f"[Unhandled] {e}")
+        return respond(500, {"error": "Internal Server Error"})
