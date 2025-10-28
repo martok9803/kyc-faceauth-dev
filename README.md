@@ -38,6 +38,12 @@ Also looks kinda cool on a resume ( or not ?)
 
 ###  How to test
 ```bash
-API="https://<your-api-id>.execute-api.eu-central-1.amazonaws.com"
-curl "$API/ping"
+API="https://b1srloxvwg.execute-api.eu-central-1.amazonaws.com"
+
+curl -s "$API/ping" | jq .
+curl -s -X POST "$API/presign-id" | jq .
+curl -s -X POST "$API/liveness/start" | jq .
+curl -s -X POST "$API/liveness/results" -H 'content-type: application/json' -d '{"sessionId":"test"}' | jq .
+curl -s -X POST "$API/kyc/submit" -H 'content-type: application/json' -d '{"sessionId":"test","idUrl":"uploads/a.jpg","selfieUrl":"uploads/b.jpg"}' | jq .
+
 
