@@ -3,16 +3,20 @@ import json, os, time, uuid
 import boto3
 from botocore.exceptions import ClientError
 
+# --- AWS clients ---
 s3 = boto3.client("s3")
 ddb = boto3.resource("dynamodb")
 
+# --- Environment ---
 BUCKET = os.environ["BUCKET"]
 TABLE  = os.environ["DDB_TABLE"]
 REKOG_ENABLED = os.environ.get("REKOGNITION_ENABLED", "false").lower() == "true"
 
 table = ddb.Table(TABLE)
 
+
 def respond(status, body):
+    """Standard JSON response with CORS headers."""
     return {
         "statusCode": status,
         "headers": {
@@ -21,21 +25,35 @@ def respond(status, body):
             "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
             "Access-Control-Allow-Headers": "Content-Type,Authorization",
         },
-        "body": json.dumps(body)
+        "body": json.dumps(body),
     }
+
 
 def handler(event, context):
     try:
-        route  = event.get("rawPath") or event.get("path") or ""
-        method = (event.get("requestContext", {}).get("http", {}).get("method") or event.get("httpMethod") or "").upper()
+        route = event.get("rawPath") or event.get("path") or ""
+        method = (
+            event.get("requestContext", {}).get("http", {}).get("method")
+            or event.get("httpMethod")
+            or ""
+        ).upper()
+
         if method == "OPTIONS":
             return respond(200, {"ok": True})
 
-        # ---- Health
+        # ---- Health ----
         if route == "/ping" and method == "GET":
-            return respond(200, {"status": "ok", "time": int(time.time()), "bucket": BUCKET, "table": TABLE})
+            return respond(
+                200,
+                {
+                    "status": "ok",
+                    "time": int(time.time()),
+                    "bucket": BUCKET,
+                    "table": TABLE,
+                },
+            )
 
-        # ---- Presign (upload an ID/selfie)
+        # ---- Presign (upload an ID/selfie) ----
         if route == "/presign-id" and method == "POST":
             key = f"uploads/{uuid.uuid4()}.jpg"
             put_url = s3.generate_presigned_url(
@@ -50,17 +68,20 @@ def handler(event, context):
             )
             return respond(200, {"key": key, "putUrl": put_url, "getUrl": get_url})
 
-        # ---- Start liveness (mock)
+        # ---- Start liveness (mock) ----
         if route == "/liveness/start" and method == "POST":
             session_id = str(uuid.uuid4())
-            table.put_item(Item={
-                "pk": f"liveness#{session_id}",
-                "ts": str(int(time.time())),     # store numbers as strings to avoid Decimal mismatches
-                "status": "started"
-            })
+            table.put_item(
+                Item={
+                    "pk": f"liveness#{session_id}",
+                    "sk": "META",  # ✅ required sort key
+                    "ts": str(int(time.time())),
+                    "status": "started",
+                }
+            )
             return respond(200, {"sessionId": session_id, "message": "liveness started (mock)"})
 
-        # ---- Liveness results (mock)
+        # ---- Liveness results (mock) ----
         if route == "/liveness/results" and method == "POST":
             body_raw = event.get("body") or "{}"
             try:
@@ -70,50 +91,57 @@ def handler(event, context):
             sid = data.get("sessionId")
             if not sid:
                 return respond(400, {"error": "missing sessionId"})
-            # simple mock decision
+
             passed = (hash(sid) % 2 == 0)
             result = {"sessionId": sid, "liveness": "PASS" if passed else "FAIL", "confidence": "0.98"}
+
             table.update_item(
-                Key={"pk": f"liveness#{sid}"},
+                Key={"pk": f"liveness#{sid}", "sk": "META"},  # ✅ include sk
                 UpdateExpression="SET #s = :s, result = :r",
                 ExpressionAttributeNames={"#s": "status"},
-                ExpressionAttributeValues={":s": "done", ":r": json.dumps(result)}
+                ExpressionAttributeValues={":s": "done", ":r": json.dumps(result)},
             )
             return respond(200, result)
 
-        # ---- KYC submit (mock compare)
+        # ---- KYC submit (mock compare) ----
         if route == "/kyc/submit" and method == "POST":
             body_raw = event.get("body") or "{}"
             try:
                 data = json.loads(body_raw)
             except Exception:
                 data = {}
+
             session = data.get("sessionId")
             id_url = data.get("idUrl")
             selfie_url = data.get("selfieUrl")
+
             if not session or not id_url or not selfie_url:
                 return respond(400, {"error": "missing sessionId, idUrl, or selfieUrl"})
 
-            # mock "match" result
             match = (hash(id_url + selfie_url) % 3 != 0)
-
             kyc_id = str(uuid.uuid4())
-            table.put_item(Item={
-                "pk": f"kyc#{kyc_id}",
-                "sessionId": session,
-                "idUrl": id_url,
-                "selfieUrl": selfie_url,
-                "match": str(bool(match)),
-                "created": str(int(time.time()))
-            })
+
+            table.put_item(
+                Item={
+                    "pk": f"kyc#{session}",  # group all records under session
+                    "sk": "META",            # ✅ required sort key
+                    "kycId": kyc_id,
+                    "sessionId": session,
+                    "idUrl": id_url,
+                    "selfieUrl": selfie_url,
+                    "match": str(bool(match)),
+                    "created": str(int(time.time())),
+                }
+            )
             return respond(200, {"kycId": kyc_id, "match": match})
 
-        # ---- Not found
+        # ---- Not found ----
         return respond(404, {"error": "Not Found", "path": route, "method": method})
+
     except ClientError as ce:
-        # surface AWS service errors in logs and return safe 500
         print(f"[ClientError] {ce}")
         return respond(500, {"error": "AWS client error", "detail": str(ce)})
+
     except Exception as e:
         print(f"[Unhandled] {e}")
         return respond(500, {"error": "Internal Server Error"})
